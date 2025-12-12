@@ -1,10 +1,12 @@
 import os
 import socket
+import threading
 from typing import Tuple
 import re
 
 
 def handleConect(connection: Tuple[socket.socket, Tuple[str, int]]):
+    print("Handle Connect started")
     connectionSock = connection[0]
     returnAdress = connection[1]
     
@@ -59,7 +61,7 @@ def handleConect(connection: Tuple[socket.socket, Tuple[str, int]]):
         
         entityHeaderLinesValid = "Content-Length: {lengthOfResource}\r\nContent-Type: {typeOfResource}\r\n"
         entityHeaderLines = entityHeaderLines + entityHeaderLinesValid
-        entityHeaderLines = entityHeaderLines.format(lengthOfResource=(os.path.getsize(requestedItemPath)),typeOfResource="AAAAAAAAAAAA") # TODO add type of resource
+        entityHeaderLines = entityHeaderLines.format(lengthOfResource=(os.path.getsize(requestedItemPath)),typeOfResource=fileToContentType(requestedItemPath))
         
         # if get, then add body, otherwise dont
         if(rematch.group('method') == "GET"):
@@ -82,15 +84,32 @@ def handleConect(connection: Tuple[socket.socket, Tuple[str, int]]):
 def getStatusCodePhrase(rematch: re.Match|None):
     if (rematch == None):
         return 400, "Malformed request"
-    if (rematch.group("method") != "HEAD" and rematch.group("method") != "GET"):
+    implementedMethods = ["HEAD","GET"]
+    unimplementedMethods = ["POST","PUT","DELETE","CONNECT","OPTIONS","TRACE"]
+    
+    if (rematch.group("method") not in implementedMethods and rematch.group("method") not in unimplementedMethods):
+        return 400, "Malformed method"
+    if (rematch.group("method") not in implementedMethods and rematch.group("method") in unimplementedMethods):
         return 501, "Method not implemented"
     directory = os.path.join(os.path.curdir,"public_html")
     requestedItemPath = os.path.join(directory,rematch.group('request'))
     if (os.path.isfile(requestedItemPath) == False):
         return 404, "File not found"
-    
+    if (fileToContentType(requestedItemPath) == "Unsuported"):
+        return 501, "File type not suported"
     return 200, "Ok"
-    
+
+def fileToContentType(fpath: str):
+    ext = os.path.splitext(fpath)[-1]
+    if (ext in [".html",".htm"]):
+        return "text/html"
+    if (ext in [".gif"]):
+        return "image/gif"
+    if (ext in [".jpg",".jpeg"]):
+        return "image/jpeg"
+    if (ext in [".pdf"]):
+        return "application/pdf"
+    return "Unsuported"
 
 # current working dirrectory + uri
 # responce: status line,
@@ -102,16 +121,19 @@ def getStatusCodePhrase(rematch: re.Match|None):
 if __name__ == "__main__":
     localHostAdress = ("127.0.0.1",12345)
 
-
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(localHostAdress)
     sock.listen()
+
+    
 
     while True:
         try:
             print("Ready to recieve connection")
             conect = sock.accept()
-            handleConect(conect)
+            # handleConect(conect)
+            thread = threading.Thread(target = handleConect, args=(conect,))
+            thread.start()
         except Exception as e:
             print("got error: ")
             print(e)
